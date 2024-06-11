@@ -1,6 +1,8 @@
 module go_code/simplek8s
 
-go 1.20
+go 1.22.0
+
+toolchain go1.22.4
 
 require (
 	github.com/gorilla/mux v1.8.1

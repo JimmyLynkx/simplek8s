@@ -1,6 +1,7 @@
 package server
 
 import (
+	"go_code/simplek8s/handler"
 	"go_code/simplek8s/middleware"
 	"net/http"
 
@@ -20,10 +21,12 @@ func InitializeRouter() (http.Handler, error) {
 	})
 
 	// 添加路由
-	r.HandleFunc("/deployments", CreateDeployment).Methods("POST")
-	r.HandleFunc("/deployments/{name}", DeleteDeployment).Methods("DELETE")
-	r.HandleFunc("/statefulsets", CreateStatefulSet).Methods("POST")
-	r.HandleFunc("/statefulsets/{name}", DeleteStatefulSet).Methods("DELETE")
+	r.HandleFunc("/deployments", handler.CreateDeployment).Methods("POST")
+	r.HandleFunc("/deployments/{name}", handler.DeleteDeployment).Methods("POST")
+	r.HandleFunc("/statefulsets", handler.CreateStatefulSet).Methods("POST")
+	r.HandleFunc("/statefulsets/{name}", handler.DeleteStatefulSet).Methods("POST")
+	r.HandleFunc("/pod/{namespace}/{name}", handler.GetPod).Methods("GET") // 查询指定 Pod
+	r.HandleFunc("/pod/{namespace}", handler.GetPod).Methods("GET")        // 查询指定命名空间下的所有 Pod
 
 	return r, nil
 }

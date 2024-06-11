@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"go_code/simplebackend/server"
+	"go_code/simplek8s/server"
 	"net/http"
 )
 
