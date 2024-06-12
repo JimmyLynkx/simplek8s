@@ -6,12 +6,27 @@ import (
 	"go_code/simplek8s/internal/utils"
 	"net/http"
 
-	"github.com/gorilla/mux"
 	v1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+func getClientset() (*kubernetes.Clientset, error) {
+	// 获取集群配置
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// 使用获得的配置创建一个 Kubernetes 客户端 clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientset, nil
+}
 
 func CreateDeployment(w http.ResponseWriter, r *http.Request) {
 	var deployment v1.Deployment
@@ -19,19 +34,15 @@ func CreateDeployment(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
-	// 获取集群配置
-	config, err := rest.InClusterConfig()
+
+	// 获取 Kubernetes 客户端 clientset
+	clientset, err := getClientset()
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 使用获得的配置创建一个Kubernetes客户端clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	// 创建deployment
+
+	// 创建 deployment
 	_, err = clientset.AppsV1().Deployments(deployment.Namespace).Create(context.TODO(), &deployment, metav1.CreateOptions{})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
@@ -41,23 +52,31 @@ func CreateDeployment(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusCreated, deployment)
 }
 
+type DeleteRequest struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
 func DeleteDeployment(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	name := vars["name"]
+	var req DeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
 
-	config, err := rest.InClusterConfig()
+	// 获取 Kubernetes 客户端 clientset
+	clientset, err := getClientset()
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
+	if req.Namespace == "" {
+		req.Namespace = "default"
 	}
 
-	err = clientset.AppsV1().Deployments("default").Delete(context.TODO(), name, metav1.DeleteOptions{})
+	// 删除 deployment
+	err = clientset.AppsV1().Deployments(req.Namespace).Delete(context.TODO(), req.Name, metav1.DeleteOptions{})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -73,19 +92,14 @@ func CreateStatefulSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 获取集群配置
-	config, err := rest.InClusterConfig()
+	// 获取 Kubernetes 客户端 clientset
+	clientset, err := getClientset()
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 使用获得的配置创建一个Kubernetes客户端clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	// 创建statefulset
+
+	// 创建 statefulset
 	_, err = clientset.AppsV1().StatefulSets(statefulSet.Namespace).Create(context.TODO(), &statefulSet, metav1.CreateOptions{})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
@@ -96,22 +110,25 @@ func CreateStatefulSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteStatefulSet(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	name := vars["name"]
+	var req DeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
 
-	config, err := rest.InClusterConfig()
+	// 获取 Kubernetes 客户端 clientset
+	clientset, err := getClientset()
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
+	if req.Namespace == "" {
+		req.Namespace = "default"
 	}
 
-	err = clientset.AppsV1().StatefulSets("default").Delete(context.TODO(), name, metav1.DeleteOptions{})
+	// 删除 statefulset
+	err = clientset.AppsV1().StatefulSets(req.Namespace).Delete(context.TODO(), req.Name, metav1.DeleteOptions{})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -120,28 +137,28 @@ func DeleteStatefulSet(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"result": "success"})
 }
 
+type GetPodRequest struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
 func GetPod(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	namespace := vars["namespace"]
-	name := vars["name"]
+	var req GetPodRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
 
-	// 获取集群配置
-	config, err := rest.InClusterConfig()
+	// 获取 Kubernetes 客户端 clientset
+	clientset, err := getClientset()
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// 使用获得的配置创建一个 Kubernetes 客户端 clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if name != "" {
+	if req.Name != "" {
 		// 查询特定 Pod
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		pod, err := clientset.CoreV1().Pods(req.Namespace).Get(context.TODO(), req.Name, metav1.GetOptions{})
 		if err != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -149,7 +166,7 @@ func GetPod(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithJSON(w, http.StatusOK, pod)
 	} else {
 		// 查询所有 Pod
-		pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+		pods, err := clientset.CoreV1().Pods(req.Namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 			return
