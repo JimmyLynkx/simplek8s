@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"go_code/simplek8s/core/application/repository"
 	"go_code/simplek8s/core/entity"
-	"os"
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,38 +31,32 @@ func (s *ClusterService) AddCluster(cluster entity.Cluster) error {
 }
 
 // CreateDeployment 在指定集群上创建 Deployment
-func (s *ClusterService) CreateDeployment(clusterID int, deploymentYAMLPath string) error {
+func (s *ClusterService) CreateDeployment(clusterID int, deploymentYAML string) error {
+	// 从存储库中获取集群信息
 	cluster, err := s.ClusterRepo.GetByID(clusterID)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster: %v", err)
 	}
 
-	configBytes, err := os.ReadFile(cluster.Config)
-	if err != nil {
-		return fmt.Errorf("failed to read config file: %v", err)
-	}
-
-	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
+	// 从字符串创建 REST 配置
+	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.Config))
 	if err != nil {
 		return fmt.Errorf("failed to create rest config: %v", err)
 	}
 
+	// 创建动态客户端
 	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("failed to create dynamic client: %v", err)
 	}
 
-	// 读取并解析 YAML 文件
-	yamlFile, err := os.ReadFile(deploymentYAMLPath)
-	if err != nil {
-		return fmt.Errorf("failed to read deployment YAML file: %v", err)
-	}
-
+	// 解析部署 YAML 字符串
 	deployment := &unstructured.Unstructured{}
-	if err := yaml.Unmarshal(yamlFile, deployment); err != nil {
+	if err := yaml.Unmarshal([]byte(deploymentYAML), deployment); err != nil {
 		return fmt.Errorf("failed to unmarshal deployment YAML: %v", err)
 	}
 
+	// 获取 GVK 和 GVR
 	gvk := deployment.GroupVersionKind()
 	gvr := schema.GroupVersionResource{
 		Group:    gvk.Group,
@@ -71,11 +64,13 @@ func (s *ClusterService) CreateDeployment(clusterID int, deploymentYAMLPath stri
 		Resource: "deployments",
 	}
 
+	// 获取命名空间
 	namespace := deployment.GetNamespace()
 	if namespace == "" {
 		namespace = "default"
 	}
 
+	// 创建 Deployment
 	_, err = dynamicClient.Resource(gvr).Namespace(namespace).Create(context.Background(), deployment, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create deployment: %v", err)
@@ -85,17 +80,13 @@ func (s *ClusterService) CreateDeployment(clusterID int, deploymentYAMLPath stri
 }
 
 // UpdateDeployment 在指定集群上更新 Deployment
-func (s *ClusterService) UpdateDeployment(clusterID int, deploymentYAMLPath string) error {
+func (s *ClusterService) UpdateDeployment(clusterID int, deploymentYAML string) error {
 	cluster, err := s.ClusterRepo.GetByID(clusterID)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster: %v", err)
 	}
 
-	configBytes, err := os.ReadFile(cluster.Config)
-	if err != nil {
-		return fmt.Errorf("failed to read config file: %v", err)
-	}
-
+	configBytes := []byte(cluster.Config)
 	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
 	if err != nil {
 		return fmt.Errorf("failed to create rest config: %v", err)
@@ -106,14 +97,9 @@ func (s *ClusterService) UpdateDeployment(clusterID int, deploymentYAMLPath stri
 		return fmt.Errorf("failed to create dynamic client: %v", err)
 	}
 
-	// 读取并解析 YAML 文件
-	yamlFile, err := os.ReadFile(deploymentYAMLPath)
-	if err != nil {
-		return fmt.Errorf("failed to read deployment YAML file: %v", err)
-	}
-
+	// 将字符串形式的 YAML 解析为 Unstructured 对象
 	deployment := &unstructured.Unstructured{}
-	if err := yaml.Unmarshal(yamlFile, deployment); err != nil {
+	if err := yaml.Unmarshal([]byte(deploymentYAML), deployment); err != nil {
 		return fmt.Errorf("failed to unmarshal deployment YAML: %v", err)
 	}
 
@@ -153,42 +139,31 @@ func (s *ClusterService) UpdateDeployment(clusterID int, deploymentYAMLPath stri
 }
 
 // GetDeployment 获取指定集群的 Deployment
-func (s *ClusterService) GetDeployment(clusterID int, deploymentName string) (*appsv1.Deployment, error) {
+func (s *ClusterService) GetDeployment(clusterID int, namespace, deploymentName string) (*appsv1.Deployment, error) {
 	// 从存储库中获取集群信息
 	cluster, err := s.ClusterRepo.GetByID(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster: %v", err)
 	}
 
-	// 读取集群配置文件
-	configBytes, err := os.ReadFile(cluster.Config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
-	}
-
-	// 从 kubeconfig 文件创建 REST 配置
+	// 创建 REST 配置
+	configBytes := []byte(cluster.Config)
 	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create REST config from kubeconfig: %v", err)
+		return nil, fmt.Errorf("failed to create rest config: %v", err)
 	}
 
-	// 创建 Kubernetes 客户端集
+	// 创建 Kubernetes 客户端
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
+		return nil, fmt.Errorf("failed to create kubernetes client: %v", err)
 	}
 
-	// 从 kubeconfig 文件中获取命名空间
-	apiConfig, err := clientcmd.Load(configBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load API config: %v", err)
-	}
-	namespace := apiConfig.Contexts[apiConfig.CurrentContext].Namespace
 	if namespace == "" {
-		namespace = "default" // 使用默认命名空间
+		namespace = "default"
 	}
 
-	// 获取指定命名空间中的 Deployment
+	// 获取 Deployment
 	deployment, err := clientset.AppsV1().Deployments(namespace).Get(context.Background(), deploymentName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment: %v", err)
@@ -197,17 +172,48 @@ func (s *ClusterService) GetDeployment(clusterID int, deploymentName string) (*a
 	return deployment, nil
 }
 
-// CreateStatefulSet 在指定集群上创建 StatefulSet
-func (s *ClusterService) CreateStatefulSet(clusterID int, statefulSetYAMLPath string) error {
+// DeleteDeployment 删除指定集群的 Deployment
+func (s *ClusterService) DeleteDeployment(clusterID int, namespace, deploymentName string) error {
+	// 从存储库中获取集群信息
 	cluster, err := s.ClusterRepo.GetByID(clusterID)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster: %v", err)
 	}
 
-	configBytes, err := os.ReadFile(cluster.Config)
+	// 创建 REST 配置
+	configBytes := []byte(cluster.Config)
+	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %v", err)
+		return fmt.Errorf("failed to create rest config: %v", err)
 	}
+
+	// 创建 Kubernetes 客户端
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %v", err)
+	}
+
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// 删除 Deployment
+	err = clientset.AppsV1().Deployments(namespace).Delete(context.Background(), deploymentName, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to delete deployment: %v", err)
+	}
+
+	return nil
+}
+
+// CreateStatefulSet 在指定集群上创建 StatefulSet
+func (s *ClusterService) CreateStatefulSet(clusterID int, statefulSetYAML string) error {
+	cluster, err := s.ClusterRepo.GetByID(clusterID)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster: %v", err)
+	}
+
+	configBytes := []byte(cluster.Config)
 
 	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
 	if err != nil {
@@ -219,14 +225,8 @@ func (s *ClusterService) CreateStatefulSet(clusterID int, statefulSetYAMLPath st
 		return fmt.Errorf("failed to create dynamic client: %v", err)
 	}
 
-	// 读取并解析 YAML 文件
-	yamlFile, err := os.ReadFile(statefulSetYAMLPath)
-	if err != nil {
-		return fmt.Errorf("failed to read statefulSet YAML file: %v", err)
-	}
-
 	statefulSet := &unstructured.Unstructured{}
-	if err := yaml.Unmarshal(yamlFile, statefulSet); err != nil {
+	if err := yaml.Unmarshal([]byte(statefulSetYAML), statefulSet); err != nil {
 		return fmt.Errorf("failed to unmarshal statefulSet YAML: %v", err)
 	}
 
@@ -251,16 +251,13 @@ func (s *ClusterService) CreateStatefulSet(clusterID int, statefulSetYAMLPath st
 }
 
 // UpdateStatefulSet 在指定集群上更新 StatefulSet
-func (s *ClusterService) UpdateStatefulSet(clusterID int, statefulSetYAMLPath string) error {
+func (s *ClusterService) UpdateStatefulSet(clusterID int, statefulSetYAML string) error {
 	cluster, err := s.ClusterRepo.GetByID(clusterID)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster: %v", err)
 	}
 
-	configBytes, err := os.ReadFile(cluster.Config)
-	if err != nil {
-		return fmt.Errorf("failed to read config file: %v", err)
-	}
+	configBytes := []byte(cluster.Config)
 
 	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
 	if err != nil {
@@ -272,14 +269,8 @@ func (s *ClusterService) UpdateStatefulSet(clusterID int, statefulSetYAMLPath st
 		return fmt.Errorf("failed to create dynamic client: %v", err)
 	}
 
-	// 读取并解析 YAML 文件
-	yamlFile, err := os.ReadFile(statefulSetYAMLPath)
-	if err != nil {
-		return fmt.Errorf("failed to read statefulSet YAML file: %v", err)
-	}
-
 	statefulSet := &unstructured.Unstructured{}
-	if err := yaml.Unmarshal(yamlFile, statefulSet); err != nil {
+	if err := yaml.Unmarshal([]byte(statefulSetYAML), statefulSet); err != nil {
 		return fmt.Errorf("failed to unmarshal statefulSet YAML: %v", err)
 	}
 
@@ -317,18 +308,14 @@ func (s *ClusterService) UpdateStatefulSet(clusterID int, statefulSetYAMLPath st
 }
 
 // GetStatefulSet 获取指定集群的 StatefulSet
-func (s *ClusterService) GetStatefulSet(clusterID int, statefulSetName string) (*appsv1.StatefulSet, error) {
+func (s *ClusterService) GetStatefulSet(clusterID int, namespace, statefulSetName string) (*appsv1.StatefulSet, error) {
 	// 从存储库中获取集群信息
 	cluster, err := s.ClusterRepo.GetByID(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster: %v", err)
 	}
 
-	// 从配置文件读取 Kubernetes 配置
-	configBytes, err := os.ReadFile(cluster.Config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
-	}
+	configBytes := []byte(cluster.Config)
 
 	// 从配置文件创建 REST 配置
 	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
@@ -342,16 +329,8 @@ func (s *ClusterService) GetStatefulSet(clusterID int, statefulSetName string) (
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %v", err)
 	}
 
-	// 从 kubeconfig 中提取默认命名空间
-	apiConfig, err := clientcmd.Load(configBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load api config: %v", err)
-	}
-	namespace := "default"
-	if ctx, exists := apiConfig.Contexts[apiConfig.CurrentContext]; exists {
-		if ctx.Namespace != "" {
-			namespace = ctx.Namespace
-		}
+	if namespace == "" {
+		namespace = "default"
 	}
 
 	// 获取 StatefulSet
@@ -361,4 +340,38 @@ func (s *ClusterService) GetStatefulSet(clusterID int, statefulSetName string) (
 	}
 
 	return statefulSet, nil
+}
+
+// DeleteStatefulSet 删除指定集群的 StatefulSet
+func (s *ClusterService) DeleteStatefulSet(clusterID int, namespace, statefulSetName string) error {
+	// 从存储库中获取集群信息
+	cluster, err := s.ClusterRepo.GetByID(clusterID)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster: %v", err)
+	}
+
+	// 创建 REST 配置
+	configBytes := []byte(cluster.Config)
+	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
+	if err != nil {
+		return fmt.Errorf("failed to create rest config: %v", err)
+	}
+
+	// 创建 Kubernetes 客户端
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %v", err)
+	}
+
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// 删除 StatefulSet
+	err = clientset.AppsV1().StatefulSets(namespace).Delete(context.Background(), statefulSetName, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to delete statefulSet: %v", err)
+	}
+
+	return nil
 }

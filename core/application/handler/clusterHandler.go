@@ -33,8 +33,8 @@ func (h *ClusterHandler) AddCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateDeploymentRequest struct {
-	ClusterID  int    `json:"cluster_id"`
-	Deployment string `json:"deployment"`
+	ClusterID      int    `json:"cluster_id"`
+	DeploymentYAML string `json:"deploymentYAML"`
 }
 
 func (h *ClusterHandler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +44,7 @@ func (h *ClusterHandler) CreateDeployment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err := h.ClusterService.CreateDeployment(req.ClusterID, req.Deployment)
+	err := h.ClusterService.CreateDeployment(req.ClusterID, req.DeploymentYAML)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -53,10 +53,7 @@ func (h *ClusterHandler) CreateDeployment(w http.ResponseWriter, r *http.Request
 	utils.RespondWithJSON(w, http.StatusOK, "Deployment created successfully")
 }
 
-type UpdateDeploymentRequest struct {
-	ClusterID          int    `json:"cluster_id"`
-	DeploymentYAMLPath string `json:"deploymentYAMLPath"`
-}
+type UpdateDeploymentRequest CreateDeploymentRequest
 
 func (h *ClusterHandler) UpdateDeployment(w http.ResponseWriter, r *http.Request) {
 	var req UpdateDeploymentRequest
@@ -65,7 +62,7 @@ func (h *ClusterHandler) UpdateDeployment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err := h.ClusterService.UpdateDeployment(req.ClusterID, req.DeploymentYAMLPath)
+	err := h.ClusterService.UpdateDeployment(req.ClusterID, req.DeploymentYAML)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -74,9 +71,9 @@ func (h *ClusterHandler) UpdateDeployment(w http.ResponseWriter, r *http.Request
 	utils.RespondWithJSON(w, http.StatusOK, "Deployment updated successfully")
 }
 
-// 请求体结构体
 type GetDeploymentRequest struct {
 	ClusterID      int    `json:"cluster_id"`
+	Namespace      string `json:"namespace"`
 	DeploymentName string `json:"deploymentName"`
 }
 
@@ -92,7 +89,7 @@ func (h *ClusterHandler) GetDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deployment, err := h.ClusterService.GetDeployment(req.ClusterID, req.DeploymentName)
+	deployment, err := h.ClusterService.GetDeployment(req.ClusterID, req.Namespace, req.DeploymentName)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -101,20 +98,32 @@ func (h *ClusterHandler) GetDeployment(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, deployment)
 }
 
-// 请求体结构体
+type DeleteDeploymentRequest GetDeploymentRequest
+
+func (h *ClusterHandler) DeleteDeployment(w http.ResponseWriter, r *http.Request) {
+	var req DeleteDeploymentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON payload")
+		return
+	}
+
+	if req.DeploymentName == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Deployment name is required")
+		return
+	}
+
+	err := h.ClusterService.DeleteDeployment(req.ClusterID, req.Namespace, req.DeploymentName)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Deployment delete successfully"})
+}
+
 type CreateStatefulSetRequest struct {
 	ClusterID       int    `json:"cluster_id"`
 	StatefulSetYAML string `json:"statefulSetYAML"`
-}
-
-type UpdateStatefulSetRequest struct {
-	ClusterID       int    `json:"cluster_id"`
-	StatefulSetYAML string `json:"statefulSetYAML"`
-}
-
-type GetStatefulSetRequest struct {
-	ClusterID       int    `json:"cluster_id"`
-	StatefulSetName string `json:"statefulSetName"`
 }
 
 // CreateStatefulSet 创建 StatefulSet 的处理函数
@@ -139,6 +148,8 @@ func (h *ClusterHandler) CreateStatefulSet(w http.ResponseWriter, r *http.Reques
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "StatefulSet created successfully"})
 }
 
+type UpdateStatefulSetRequest CreateStatefulSetRequest
+
 // UpdateStatefulSet 更新 StatefulSet 的处理函数
 func (h *ClusterHandler) UpdateStatefulSet(w http.ResponseWriter, r *http.Request) {
 	var req UpdateStatefulSetRequest
@@ -161,6 +172,12 @@ func (h *ClusterHandler) UpdateStatefulSet(w http.ResponseWriter, r *http.Reques
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "StatefulSet updated successfully"})
 }
 
+type GetStatefulSetRequest struct {
+	ClusterID       int    `json:"cluster_id"`
+	Namespace       string `json:"namespace"`
+	StatefulSetName string `json:"statefulSetName"`
+}
+
 // GetStatefulSet 获取 StatefulSet 的处理函数
 func (h *ClusterHandler) GetStatefulSet(w http.ResponseWriter, r *http.Request) {
 	var req GetStatefulSetRequest
@@ -174,11 +191,34 @@ func (h *ClusterHandler) GetStatefulSet(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	statefulSet, err := h.ClusterService.GetStatefulSet(req.ClusterID, req.StatefulSetName)
+	statefulSet, err := h.ClusterService.GetStatefulSet(req.ClusterID, req.Namespace, req.StatefulSetName)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, statefulSet)
+}
+
+type DeleteStatefulSetRequest GetStatefulSetRequest
+
+func (h *ClusterHandler) DeleteStatefulSet(w http.ResponseWriter, r *http.Request) {
+	var req DeleteStatefulSetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON payload")
+		return
+	}
+
+	if req.StatefulSetName == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "StatefulSet name is required")
+		return
+	}
+
+	err := h.ClusterService.DeleteStatefulSet(req.ClusterID, req.Namespace, req.StatefulSetName)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "StatefulSet delete successfully"})
 }

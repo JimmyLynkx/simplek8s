@@ -24,9 +24,10 @@ func RegisterRoutes(mux *http.ServeMux, clusterHandler *handler.ClusterHandler) 
 	mux.Handle("/deployment/create", http.HandlerFunc(clusterHandler.CreateDeployment))
 	mux.Handle("/deployment/update", http.HandlerFunc(clusterHandler.UpdateDeployment))
 	mux.Handle("/deployment/get", http.HandlerFunc(clusterHandler.GetDeployment))
+	mux.Handle("/deployment/delete", http.HandlerFunc(clusterHandler.DeleteDeployment))
 	mux.Handle("/statefulset/create", http.HandlerFunc(clusterHandler.CreateStatefulSet))
 	mux.Handle("/statefulset/update", http.HandlerFunc(clusterHandler.UpdateStatefulSet))
 	mux.Handle("/statefulset/get", http.HandlerFunc(clusterHandler.GetStatefulSet))
-
+	mux.Handle("/statefulset/delete", http.HandlerFunc(clusterHandler.DeleteStatefulSet))
 	Logger.Info("Routes registered")
 }
