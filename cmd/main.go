@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"go_code/simplek8s/server"
+	"go_code/simplek8s/wire"
 	"net/http"
 )
 
@@ -12,7 +13,7 @@ func main() {
 	defer server.Logger.Sync()
 
 	// 初始化路由
-	httpHandler, err := server.InitializeRouter()
+	httpHandler, err := wire.InitializeRouter()
 	if err != nil {
 		server.Logger.Fatal(err.Error())
 	}

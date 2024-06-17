@@ -4,28 +4,29 @@ import (
 	"go_code/simplek8s/core/application/handler"
 	"go_code/simplek8s/middleware"
 	"net/http"
-
-	"github.com/gorilla/mux"
 )
 
-func InitializeRouter() (http.Handler, error) {
-	r := mux.NewRouter()
+func NewRouter(clusterHandler *handler.ClusterHandler) http.Handler {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, clusterHandler)
 
-	// 添加中间件
-	r.Use(middleware.JSONResponseMiddleware)
-	r.Use(func(next http.Handler) http.Handler {
-		return middleware.LoggingMiddleware(next, Logger)
-	})
-	r.Use(func(next http.Handler) http.Handler {
-		return middleware.RecoverMiddleware(next, Logger)
-	})
+	// 使用中间件的顺序：先恢复 panic，再记录日志，最后处理 JSON 响应
+	recoverMiddleware := middleware.RecoverMiddleware(mux, Logger)
+	loggingMiddleware := middleware.LoggingMiddleware(recoverMiddleware, Logger)
+	finalHandler := middleware.JSONResponseMiddleware(loggingMiddleware)
 
-	// 添加路由
-	r.HandleFunc("/deployments", handler.CreateDeployment).Methods("POST")
-	r.HandleFunc("/deployments/delete", handler.DeleteDeployment).Methods("POST") // 从请求体接收参数
-	r.HandleFunc("/statefulsets", handler.CreateStatefulSet).Methods("POST")
-	r.HandleFunc("/statefulsets/delete", handler.DeleteStatefulSet).Methods("POST")
-	r.HandleFunc("/pods", handler.GetPod).Methods("POST")
+	return finalHandler
+}
 
-	return r, nil
+func RegisterRoutes(mux *http.ServeMux, clusterHandler *handler.ClusterHandler) {
+	// 添加路由，并将请求通过中间件处理
+	mux.Handle("/cluster/add", http.HandlerFunc(clusterHandler.AddCluster))
+	mux.Handle("/deployment/create", http.HandlerFunc(clusterHandler.CreateDeployment))
+	mux.Handle("/deployment/update", http.HandlerFunc(clusterHandler.UpdateDeployment))
+	mux.Handle("/deployment/get", http.HandlerFunc(clusterHandler.GetDeployment))
+	mux.Handle("/statefulset/create", http.HandlerFunc(clusterHandler.CreateStatefulSet))
+	mux.Handle("/statefulset/update", http.HandlerFunc(clusterHandler.UpdateStatefulSet))
+	mux.Handle("/statefulset/get", http.HandlerFunc(clusterHandler.GetStatefulSet))
+
+	Logger.Info("Routes registered")
 }

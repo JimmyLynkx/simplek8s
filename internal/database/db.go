@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"go_code/simplek8s/server"
-	"os"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -13,13 +12,13 @@ import (
 func NewDB() *sql.DB {
 	var db *sql.DB
 	var err error
-	dbHost := os.Getenv("DB_HOST")
+	/* dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASSWORD")
-	dbName := os.Getenv("DB_NAME")
+	dbName := os.Getenv("DB_NAME") */
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbUser, dbPassword, dbHost, dbPort, dbName)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", "root", "root", "localhost", "3306", "simplek8s")
 
 	for i := 0; i < 10; i++ {
 		db, err = sql.Open("mysql", dsn)
